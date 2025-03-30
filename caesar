@@ -1,0 +1,26 @@
+#!/bin/bash
+#this code is for using the pattern created before to do multiple character shifting works
+#get output from creat_pattern
+
+while getopts "k:u" opt; do
+    case "$opt" in
+        k) shift_num="$OPTARG" ;;
+        u) up_flag=1 ;;
+        *) echo "Usage: $0 [-k shift] [-u]"; exit 1 ;;
+    esac
+done
+
+create_opts="-k $shift_num"
+if [ $up_flag -eq 1 ]; then
+    create_opts="$create_opts -u"
+fi
+#tr pattern achieve
+pattern=$(./create_pattern $create_opts)
+
+if [ $up_flag -eq 1 ]; then
+    orig_set='[A-Z]'
+else
+    orig_set='[a-z]'
+fi
+
+cat | tr "$orig_set" "$pattern"
