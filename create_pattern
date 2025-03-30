@@ -1,0 +1,34 @@
+#!/bin/bash
+#this code is for creating a pattern using in tr function as the second argument
+
+up_flag=0 #not in upper case at beginning
+shift_num=0 #not shift numbers at beginning
+
+while getopts "k:u" opt; do
+    case "$opt" in
+        k) shift_num="$OPTARG" ;;
+        u) up_flag=1 ;;
+        *) echo "Usage: $0 [-k shift] [-u]"; exit 1 ;;
+    esac
+done
+shift_num=$((shift_num % 26)
+
+#for displaying
+alphabet=(a b c d e f g h i j k l m n o p q r s t u v w x y z)
+
+#shift numbers
+if [ $shift_num -eq 0 ]; then
+    pattern="[a-z]"
+else
+#if shift 26*n place it should remain the same as before
+first_letter=${alphabet[$shift_num]}
+    second_index=$((shift_num - 1))
+    second_letter=${alphabet[$second_index]}
+    pattern="[$first_letter-za-$second_letter]"
+fi
+
+#if have -u convert to upper case
+if [ $up_flag -eq 1 ]; then
+    pattern=${pattern^^}
+fi
+echo $echo
