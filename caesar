@@ -1,26 +1,37 @@
 #!/bin/bash
-#this code is for using the pattern created before to do multiple character shifting works
+#using  pattern,to shift multiple characters.
+#调用 create_pattern 获取转换模式，支持混合选项，读取标准输入直至EOF。
 #get output from creat_pattern
 
-while getopts "k:u" opt; do
-    case "$opt" in
-        k) shift_num="$OPTARG" ;;
-        u) up_flag=1 ;;
-        *) echo "Usage: $0 [-k shift] [-u]"; exit 1 ;;
-    esac
+pattern=$(./create_pattern "$@")
+up=0
+#IF -u found,
+for arg in "$@"; do
+    if [[ $arg = "-u" ]]; then
+        up=1
+    fi
 done
-
-create_opts="-k $shift_num"
-if [ $up_flag -eq 1 ]; then
-    create_opts="$create_opts -u"
-fi
-#tr pattern achieve
-pattern=$(./create_pattern $create_opts)
-
-if [ $up_flag -eq 1 ]; then
+#tr u or l through tr
+if [ $up == 1 ]; then
     orig_set='[A-Z]'
 else
     orig_set='[a-z]'
 fi
 
-cat | tr "$orig_set" "$pattern"
+#keep input untiil find"eof" or "EOF" 
+while read input; 
+do
+    if [ $up == 0 ];then
+        if [[ $input = "eof" ]]; then
+            break
+        fi
+        #else no"eof"
+        echo "$input" | tr '[a-z]' $pattern
+    elif [ $up == 1 ]; then
+        if [[ $input = "EOF" ]]; then
+            break
+        fi
+        #if not EOF
+        echo $input | tr '[A-Z]' $pattern
+    fi
+done
