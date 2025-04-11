@@ -38,7 +38,8 @@ int main() {
     
     /* Part 6: Basic Arithmetic
        声明变量并计算各种算术运算 */
-    int a = 5, b = 3;
+    int a = 5;
+    int b = 3;
     float c = 2.5;
     // 整数运算：加、减、乘、除（整数除法）和求余
     printf("a + b = %d\n", a + b);
