@@ -4,7 +4,6 @@
  * Read commands from stdin and run them one-by-one.
  */
 
-#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
