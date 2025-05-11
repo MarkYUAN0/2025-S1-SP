@@ -1,4 +1,4 @@
-
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,7 +7,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/wait.h>
-//this part is to parse the space
+
 
 char *strsep(char **stringp, const char *delim) {
     char *rv = *stringp;
@@ -30,7 +30,9 @@ void parse(char *str, char **cmd)
             break;
     }
 }
+
 /*Function definition of main()*/
+
 int main()
 {
     char *cmd[1000];
@@ -48,6 +50,7 @@ int main()
 
         count++;
     }
+    
     /* Reading file line by line */
     for (i = 0; i < count; i++)
     {
