@@ -10,24 +10,27 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-#define MAX_LINE   256
-#define MAX_ARGS   11      /* 10 args + NULL */
+#define MAX_LINE 256
+#define MAX_ARGS 11      /* 10 args + NULL  */
 
-static void trim_newline(char *s)
+static void trim_eol(char *s)
 {
+    /* 去除行尾的 \n 与 \r，兼容 Windows 文本 */
     size_t len = strlen(s);
-    if (len && s[len - 1] == '\n') s[len - 1] = '\0';
+    while (len && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
+        s[--len] = '\0';
+    }
 }
 
 static int parse_line(char *line, char *argv[])
 {
     int argc = 0;
-    char *tok = strtok(line, " \t");
-    while (tok && argc < MAX_ARGS - 1) {
-        argv[argc++] = tok;
-        tok = strtok(NULL, " \t");
+    char *token = strtok(line, " \t");
+    while (token && argc < MAX_ARGS - 1) {
+        argv[argc++] = token;
+        token = strtok(NULL, " \t");
     }
-    argv[argc] = NULL;          /* execvp 需要以 NULL 终止 */
+    argv[argc] = NULL;
     return argc;
 }
 
@@ -37,8 +40,10 @@ int main(void)
     char *argv[MAX_ARGS];
 
     while (fgets(line, sizeof line, stdin)) {
-        trim_newline(line);
-        if (line[0] == '\0')    /* 跳过空行 */
+        trim_eol(line);
+
+        /* 跳过空白行 */
+        if (strspn(line, " \t") == strlen(line))
             continue;
 
         parse_line(line, argv);
@@ -48,9 +53,9 @@ int main(void)
             perror("fork");
             exit(EXIT_FAILURE);
         }
-        if (pid == 0) {         /* child */
+        if (pid == 0) {                 /* child */
             execvp(argv[0], argv);
-            perror(argv[0]);    /* execvp 只在失败时返回 */
+            perror(argv[0]);            /* execvp 失败才会返回 */
             _exit(127);
         }
         /* parent */
