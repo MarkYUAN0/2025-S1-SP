@@ -1,75 +1,62 @@
+/*
+ * sequence.c  – COMP SCI 2005, S1 2025 Assignment 2
+ * Author: Junyuan Guan (a1883125)
+ * Read commands from stdin and run them one-by-one.
+ */
+
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <sys/wait.h>
 
+#define MAX_LINE   256
+#define MAX_ARGS   11      /* 10 args + NULL */
 
-char *strsep(char **stringp, const char *delim) {
-    char *rv = *stringp;
-    if (rv) {
-        *stringp += strcspn(*stringp, delim);
-        if (**stringp)
-            *(*stringp)++ = '\0';
-        else
-            *stringp = 0; }
-    return rv;
+static void trim_newline(char *s)
+{
+    size_t len = strlen(s);
+    if (len && s[len - 1] == '\n') s[len - 1] = '\0';
 }
 
-void parse(char *str, char **cmd)
+static int parse_line(char *line, char *argv[])
 {
-    int i;
-    for (i = 0; i < 256; i++)
-    {
-        cmd[i] = strsep(&str, " ");
-        if (cmd[i] == NULL)
-            break;
+    int argc = 0;
+    char *tok = strtok(line, " \t");
+    while (tok && argc < MAX_ARGS - 1) {
+        argv[argc++] = tok;
+        tok = strtok(NULL, " \t");
     }
+    argv[argc] = NULL;          /* execvp 需要以 NULL 终止 */
+    return argc;
 }
 
-/*Function definition of main()*/
-
-int main()
+int main(void)
 {
-    char *cmd[1000];
-    char line[100][256];
-    pid_t pid;
-    int count = 0;
-    int i;
+    char  line[MAX_LINE];
+    char *argv[MAX_ARGS];
 
-    while (1)
-    {
-        if (fgets(line[count], 256, stdin) == NULL)
-        {
-            break;
-        }
+    while (fgets(line, sizeof line, stdin)) {
+        trim_newline(line);
+        if (line[0] == '\0')    /* 跳过空行 */
+            continue;
 
-        count++;
-    }
-    
-    /* Reading file line by line */
-    for (i = 0; i < count; i++)
-    {
-        strtok(line[i], "\n");
-        pid = fork();
-        // Fork Fail
-        if (pid < 0)
-        {
-            printf("Failed Fork\n");
+        parse_line(line, argv);
+
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            exit(EXIT_FAILURE);
         }
-        else if (pid == 0)
-        {
-            parse(line[i], cmd);
-            execvp(*cmd, cmd);
+        if (pid == 0) {         /* child */
+            execvp(argv[0], argv);
+            perror(argv[0]);    /* execvp 只在失败时返回 */
+            _exit(127);
         }
-        //parent
-        else
-        {
-            wait(NULL);
+        /* parent */
+        if (waitpid(pid, NULL, 0) < 0) {
+            perror("waitpid");
         }
     }
     return 0;
