@@ -26,3 +26,7 @@ int main(void)
     puts("Main thread exits");
     return 0;
 }
+
+gcc -Wall -O2 simple_thread.c -pthread -o simple_thread    # -pthread 同时添加宏并链接 libpthread :contentReference[oaicite:2]{index=2}
+./simple_thread
+
