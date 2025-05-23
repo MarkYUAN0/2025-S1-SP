@@ -28,5 +28,4 @@ int main(void)
     pthread_mutex_destroy(&lock);
 }
 
-gcc -O2 race_condition_demo_mutex.c -pthread -o race_demo_mutex
-./race_demo_mutex
+

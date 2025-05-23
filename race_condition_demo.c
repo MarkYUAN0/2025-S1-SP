@@ -24,5 +24,4 @@ int main(void)
            counter, 2 * INCREMENTS);
 }
 
-gcc -O2 race_condition_demo.c -pthread -o race_demo
-for i in {1..5}; do ./race_demo; done
+
