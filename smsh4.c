@@ -1,6 +1,6 @@
-// smsh4.c — Part 3：加入 globbing、sequence、pipe、redir
-// 参考当前版本：file :contentReference[oaicite:1]{index=1}
+// smsh4.c — 在 smsh3.c 的逻辑前增加通配符(expand_wildcards)
 
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,16 +11,40 @@
 #include <sys/wait.h>
 #include "smsh.h"
 
-// trim() 同上…
-
-static char *trim(char *s) {
-    /* 与 smsh3.c 一致 */
+// 自定义 strdup
+static char *xstrdup(const char *s) {
+    char *d = malloc(strlen(s) + 1);
+    if (d) strcpy(d, s);
+    return d;
 }
 
-// split_pipes() 同上…
+// trim() 与 smsh3.c 相同
+static char *trim(char *s) {
+    char *end;
+    while (*s && isspace((unsigned char)*s)) s++;
+    if (*s == '\0') return s;
+    end = s + strlen(s) - 1;
+    while (end > s && isspace((unsigned char)*end)) *end-- = '\0';
+    return s;
+}
 
+// split_pipes() 与 smsh3.c 相同
 static char ***split_pipes(char **tokens, int *ncmds) {
-    /* 与 smsh3.c 一致 */
+    int cnt = 1;
+    for (char **p = tokens; *p; ++p)
+        if (strcmp(*p, "|") == 0) cnt++;
+    char ***cmds = malloc((cnt + 1) * sizeof(char **));
+    int idx = 0;
+    cmds[idx] = tokens;
+    for (char **p = tokens; *p; ++p) {
+        if (strcmp(*p, "|") == 0) {
+            *p = NULL;
+            cmds[++idx] = p + 1;
+        }
+    }
+    cmds[cnt] = NULL;
+    *ncmds = cnt;
+    return cmds;
 }
 
 // 通配符展开
@@ -32,60 +56,113 @@ static char **expand_wildcards(char **tokens) {
             glob_t res;
             glob(*t, 0, NULL, &res);
             for (size_t i = 0; i < res.gl_pathc; ++i) {
-                if (len+1 >= cap)
+                if (len + 1 >= cap)
                     out = realloc(out, (cap = cap*2+4) * sizeof(char*));
-                out[len++] = strdup(res.gl_pathv[i]);
+                out[len++] = xstrdup(res.gl_pathv[i]);
             }
             globfree(&res);
         } else {
-            if (len+1 >= cap)
+            if (len + 1 >= cap)
                 out = realloc(out, (cap = cap*2+4) * sizeof(char*));
-            out[len++] = strdup(*t);
+            out[len++] = xstrdup(*t);
         }
     }
-    if (len+1 >= cap)
+    if (len + 1 >= cap)
         out = realloc(out, (cap = cap*2+4) * sizeof(char*));
     out[len] = NULL;
     return out;
 }
 
 int main() {
-    char *line, *segment, *rest;
-    char **tokens, **expanded;
-
+    char *line;
     while ((line = next_cmd("> ", stdin)) != NULL) {
-        rest = line;
-        while ((segment = strsep(&rest, ";")) != NULL) {
+        char *saveptr1, *segment = strtok_r(line, ";", &saveptr1);
+        while (segment) {
             char *cmd = trim(segment);
-            if (*cmd == '\0') continue;
+            if (*cmd) {
+                // 1) 分词
+                char **tokens = splitline(cmd);
+                if (tokens) {
+                    // 2) 通配符展开
+                    char **expanded = expand_wildcards(tokens);
+                    freelist(tokens);
+                    tokens = expanded;
 
-            // 1) 分词
-            if (!(tokens = splitline(cmd))) continue;
-            // 2) 通配符展开
-            expanded = expand_wildcards(tokens);
-            freelist(tokens);
-            tokens = expanded;
+                    // 3) 完全复用 smsh3.c 中的管道/重定向/sequence 逻辑
+                    int n; 
+                    char ***cmds = split_pipes(tokens, &n);
+                    if (n == 1) {
+                        // 单命令 fork + 重定向 + execvp
+                        pid_t pid = fork();
+                        if (pid == 0) {
+                            for (char **p = tokens; *p; ++p) {
+                                if (strcmp(*p, "<") == 0) {
+                                    int fd = open(p[1], O_RDONLY);
+                                    if (fd < 0) fatal("open", "", 1);
+                                    dup2(fd, STDIN_FILENO);
+                                    close(fd);
+                                    *p = NULL;
+                                } else if (strcmp(*p, ">") == 0) {
+                                    int fd = open(p[1],
+                                        O_WRONLY|O_CREAT|O_TRUNC, 0666);
+                                    if (fd < 0) fatal("open", "", 1);
+                                    dup2(fd, STDOUT_FILENO);
+                                    close(fd);
+                                    *p = NULL;
+                                }
+                            }
+                            execvp(tokens[0], tokens);
+                            perror("execvp");
+                            exit(EXIT_FAILURE);
+                        } else if (pid > 0) {
+                            wait(NULL);
+                        } else {
+                            perror("fork");
+                        }
+                    } else {
+                        // 多命令管道 + 重定向
+                        int pipes[n-1][2];
+                        for (int i = 0; i < n-1; ++i) pipe(pipes[i]);
+                        for (int i = 0; i < n; ++i) {
+                            pid_t pid = fork();
+                            if (pid == 0) {
+                                if (i > 0) dup2(pipes[i-1][0], STDIN_FILENO);
+                                if (i < n-1) dup2(pipes[i][1], STDOUT_FILENO);
+                                for (int j = 0; j < n-1; ++j)
+                                    close(pipes[j][0]), close(pipes[j][1]);
+                                for (char **q = cmds[i]; *q; ++q) {
+                                    if (strcmp(*q, "<") == 0) {
+                                        int fd = open(q[1], O_RDONLY);
+                                        if (fd < 0) fatal("open", "", 1);
+                                        dup2(fd, STDIN_FILENO);
+                                        close(fd);
+                                        *q = NULL;
+                                    } else if (strcmp(*q, ">") == 0) {
+                                        int fd = open(q[1],
+                                            O_WRONLY|O_CREAT|O_TRUNC, 0666);
+                                        if (fd < 0) fatal("open", "", 1);
+                                        dup2(fd, STDOUT_FILENO);
+                                        close(fd);
+                                        *q = NULL;
+                                    }
+                                }
+                                execvp(cmds[i][0], cmds[i]);
+                                perror("execvp");
+                                exit(EXIT_FAILURE);
+                            }
+                        }
+                        for (int i = 0; i < n-1; ++i)
+                            close(pipes[i][0]), close(pipes[i][1]);
+                        while (wait(NULL) > 0);
+                    }
 
-            // 3) 余下逻辑完全同 smsh3.c
-            int n; char ***cmds = split_pipes(tokens, &n);
-            if (n == 1) {
-                // 单命令 fork+redir+exec
-                pid_t pid = fork();
-                if (pid == 0) {
-                    /* 与 smsh3.c 单命令子进程重定向相同 */
-                } else {
-                    wait(NULL);
+                    freelist(tokens);
+                    free(cmds);
                 }
-            } else {
-                // 多命令管道 + 子进程重定向
-                /* 与 smsh3.c 管道分支完全相同 */
             }
-
-            freelist(tokens);
-            free(cmds);
+            segment = strtok_r(NULL, ";", &saveptr1);
         }
         free(line);
     }
     return EXIT_SUCCESS;
 }
-
